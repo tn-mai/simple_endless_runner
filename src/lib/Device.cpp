@@ -33,6 +33,16 @@ void DescriptorHeap::CopyHandle(int index, const DescriptorPtr& descriptor)
 }
 
 /**
+* フェンス到達を待機
+*
+* @param commandQueue 待機に使用するコマンドキュー
+*/
+void GraphicsCommandContext::WaitForFence(const CommandQueuePtr& commandQueue) const
+{
+  commandQueue->WaitForFence(fenceValue);
+}
+
+/**
 * デバイスを初期化
 * 
 * @param memoryReservation 必要なGPUメモリのバイト数

@@ -35,6 +35,11 @@ struct IndexBuffer
   D3D12_INDEX_BUFFER_VIEW view;
 };
 
+/**
+* リソースデスクリプタの抽象化
+*
+* Device::AllocateDescriptor で取得
+*/
 class Descriptor
 {
   friend class Device;
@@ -53,7 +58,7 @@ private:
 using DescriptorPtr = std::shared_ptr<Descriptor>;
 
 /**
-*
+* デスクリプタヒープの抽象化
 */
 class DescriptorHeap
 {
@@ -93,7 +98,7 @@ private:
 };
 
 /**
-*
+* 描画に必要なオブジェクトをまとめるクラス
 */
 class GraphicsCommandContext
 {
@@ -106,10 +111,16 @@ public:
   };
   ID3D12GraphicsCommandList* GetList(ListType type) const { return list[static_cast<int>(type)].Get(); }
   ID3D12CommandAllocator* GetAllocator() const { return allocator.Get(); }
+  void ResetAllocator() { allocator->Reset(); }
+  void ResetList(ListType type) { list[static_cast<int>(type)]->Reset(allocator.Get(), nullptr); }
   void SetFenceValue(uint64_t newValue) { fenceValue = newValue; }
-  //void WaitForFence();
+  void WaitForFence(const CommandQueuePtr&) const;
 
 private:
+  // アロケータは実行完了まで存続する必要があるためフレームバッファごとに必要
+  // コマンドリストはExecuteCommadListに渡した段階でコマンドキュー側にコピーされるので、用途ごとにひとつで十分
+  // ただし、マルチスレッド生成を考慮する場合はアロケータと1対1に作成するとよい
+  // NOTE: DX12サンプルのMiniEngineでは1対1で、さらに必要に応じて作成する仕組みになっている
   DescriptorHeap slotCSU;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list[3];

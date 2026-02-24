@@ -42,28 +42,18 @@ int result = 0;
 constexpr uint32_t framebufferCount = 3;
 
 EasyLib::DX12::DevicePtr device;
-
-EasyLib::DX12::PSOPtr pso;
 EasyLib::DX12::FramebufferPtr framebuffer;
 EasyLib::DX12::CommandQueuePtr commandQueue;
-EasyLib::DX12::VertexBuffer vertexBuffer;
-EasyLib::DX12::IndexBuffer indexBuffer;
-EasyLib::DX12::TexturePtr texture;
-
+EasyLib::DX12::SpriteRenderer spriteRenderer;
 std::vector<EasyLib::DX12::Sprite> spriteBuffer;
 std::unordered_map<std::string, EasyLib::DX12::TexturePtr> textureCache;
 std::unordered_set<std::string> textureMissCache;
-EasyLib::DX12::SpriteRenderer spriteRenderer;
 
 XMFLOAT2 textScale(1, 1);
 XMFLOAT4 textColor(1, 1, 1, 1);
 std::vector<EasyLib::DX12::Text> textBuffer;
 EasyLib::DX12::FontRenderer fontRenderer;
 
-// アロケータは実行完了まで存続する必要があるためフレームバッファごとに必要
-// コマンドリストはExecuteCommadListに渡した段階でコマンドキュー側にコピーされるので、用途ごとにひとつで十分
-// ただし、マルチスレッド生成を考慮する場合はアロケータと1対1に作成するとよい
-// NOTE: DX12サンプルのMiniEngineでは1対1で、さらに必要に応じて作成する仕組みになっている
 // TODO: Deviceクラスに統合すること
 struct RenderCommandContext
 {
@@ -114,30 +104,6 @@ enum class MouseButtonState {
 };
 MouseButtonState mouseButtonStates[3];
 XMINT2 mousePosition = { 0, 0 };
-
-/// 頂点データ型
-struct Vertex
-{
-  XMFLOAT3 position;
-  XMFLOAT2 texCoord;
-  XMFLOAT4 color;
-};
-
-const D3D12_INPUT_ELEMENT_DESC vertexLayout[] = {
-  { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-  { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-  { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-};
-
-const Vertex vertices[] = {
-  { XMFLOAT3( 0.0f, 0.5f, 0.5f), XMFLOAT2(0.5f, 0.0f), XMFLOAT4(1.0f, 0.3f, 0.3f, 1.0f) },
-  { XMFLOAT3( 0.5f,-0.5f, 0.5f), XMFLOAT2(1.0f, 1.0f), XMFLOAT4(0.3f, 1.0f, 0.3f, 1.0f) },
-  { XMFLOAT3(-0.0f,-0.5f, 0.5f), XMFLOAT2(0.0f, 1.0f), XMFLOAT4(0.3f, 0.3f, 1.0f, 1.0f) },
-};
-
-const uint16_t indices[] = {
-  0, 1, 2
-};
 
 /**
 * ウィンドウメッセージ処理コールバック
@@ -382,26 +348,6 @@ int initialize(const std::string& app_name, int clientWidth, int clientHeight)
   framebuffer = device->CreateFramebuffer(commandQueue, hwnd,
     static_cast<uint16_t>(clientWidth), static_cast<uint16_t>(clientHeight), framebufferCount);
 
-  for (auto& context : renderCommandContexts) {
-    // コマンドアロケータを作成
-    context.allocator = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT);
-
-    // コマンドリストを作成
-    context.listPre = device->CreateCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT, context.allocator.Get());
-    context.listMain = device->CreateCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT, context.allocator.Get());
-    context.listPost = device->CreateCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT, context.allocator.Get());
-
-    context.slot = device->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 8, true);
-  }
-
-  pso = device->CreatePipelineState(L"res/shader/VertexShader.hlsl", L"res/shader/PixelShader.hlsl",
-    EasyLib::DX12::BlendMode::Opaque, EasyLib::DX12::CullMode::Back, EasyLib::DX12::DepthStencilMode::Depth,
-    vertexLayout, std::size(vertexLayout));
-  vertexBuffer = device->CreateVertexBuffer(L"Vertex Buffer", sizeof(vertices), sizeof(vertices[0]), vertices);
-  indexBuffer = device->CreateIndexBuffer(L"Index Buffer", sizeof(indices), DXGI_FORMAT_R16_UINT, indices);
-
-  texture = device->LoadTexture(L"res/bg_space.png");
-
   spriteBuffer.reserve(1024);
   textureCache.reserve(1024);
   textureMissCache.reserve(1024);
@@ -477,51 +423,24 @@ int update()
 */
 void render()
 {
-  auto& context = renderCommandContexts[currentFrameIndex];
+  auto& context = device->GetCommandContext(currentFrameIndex);
 
-  commandQueue->WaitForFence(context.fenceValue);
+  context.WaitForFence(commandQueue);
 
-  context.allocator->Reset();
+  context.ResetAllocator();
 
-  {
-    context.listPre->Reset(context.allocator.Get(), nullptr);
-
-    auto barrier1 = framebuffer->GetTransitionBarrier(
-      currentFrameIndex, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    context.listPre->ResourceBarrier(1, &barrier1);
-
-    // バックバッファの内容を消去
-    const D3D12_CPU_DESCRIPTOR_HANDLE& rtvHandle = framebuffer->GetRenderTargetHandle(currentFrameIndex);
-    const D3D12_CPU_DESCRIPTOR_HANDLE& dsvHandle = framebuffer->GetDepthStencilHandle();
-    const float clearColor[] = { 0.8f, 0.2f, 0.4f, 1.0f }; // 注意: 0か1以外の数値ではハードウェア最適化されない
-    context.listPre->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-    context.listPre->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-    context.listPre->Close();
-  }
-
-  //{
-  //  context.listMain->Reset(context.allocator.Get(), nullptr);
-
-  //  const D3D12_CPU_DESCRIPTOR_HANDLE& rtvHandle = framebuffer->GetRenderTargetHandle(currentFrameIndex);
-  //  const D3D12_CPU_DESCRIPTOR_HANDLE& dsvHandle = framebuffer->GetDepthStencilHandle();
-  //  context.listMain->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-  //  context.listMain->RSSetViewports(1, &viewport);
-  //  context.listMain->RSSetScissorRects(1, &scissorRect);
-
-  //  context.listMain->SetPipelineState(pso->GetPipelineStateObject());
-  //  context.listMain->SetGraphicsRootSignature(pso->GetRootSignature());
-  //  // TODO: デバイスのデスクリプタスロットをヒープに設定して、必要なハンドルをスロットにコピーする形式に変える
-  //  ID3D12DescriptorHeap* heaps[] = { context.slot.GetHeap()};
-  //  context.listMain->SetDescriptorHeaps(std::size(heaps), heaps);
-  //  context.slot.CopyHandle(0, texture->GetDescriptor());
-  //  context.listMain->SetGraphicsRootDescriptorTable(1, context.slot.GetGPUDescriptorHandle(0));
-  //  context.listMain->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  //  context.listMain->IASetVertexBuffers(0, 1, &vertexBuffer.view);
-  //  context.listMain->DrawInstanced(std::size(vertices), 1, 0, 0);
-
-  //  context.listMain->Close();
-  //}
+  ID3D12GraphicsCommandList* listPre = context.GetList(EasyLib::DX12::GraphicsCommandContext::ListType::Pre);
+  listPre->Reset(context.GetAllocator(), nullptr);
+  auto barrier1 = framebuffer->GetTransitionBarrier(
+    currentFrameIndex, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  listPre->ResourceBarrier(1, &barrier1);
+  // バックバッファの内容を消去
+  const D3D12_CPU_DESCRIPTOR_HANDLE& rtvHandle = framebuffer->GetRenderTargetHandle(currentFrameIndex);
+  const D3D12_CPU_DESCRIPTOR_HANDLE& dsvHandle = framebuffer->GetDepthStencilHandle();
+  const float clearColor[] = { 0.8f, 0.2f, 0.4f, 1.0f }; // 注意: 0か1以外の数値ではハードウェア最適化されない
+  listPre->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+  listPre->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+  listPre->Close();
 
   EasyLib::DX12::SpriteRenderingInfo spriteRenderingInfo = {};
   spriteRenderingInfo.handleRTV = framebuffer->GetRenderTargetHandle(currentFrameIndex);
@@ -543,19 +462,20 @@ void render()
   fontRenderingInfo.framebufferIndex = currentFrameIndex;
   auto fontCommandList = fontRenderer.Draw(textBuffer.data(), textBuffer.size(), fontRenderingInfo);
 
-  context.listPost->Reset(context.allocator.Get(), nullptr);
+  ID3D12GraphicsCommandList* listPost = context.GetList(EasyLib::DX12::GraphicsCommandContext::ListType::Post);
+  listPost->Reset(context.GetAllocator(), nullptr);
   auto barrier2 = framebuffer->GetTransitionBarrier(
     currentFrameIndex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-  context.listPost->ResourceBarrier(1, &barrier2);
-  context.listPost->Close();
+  listPost->ResourceBarrier(1, &barrier2);
+  listPost->Close();
 
   ID3D12CommandList* commandLists[] = {
-    context.listPre.Get(),
+    listPre,
     spriteCommandList,
     fontCommandList,
-    context.listPost.Get(),
+    listPost,
   };
-  context.fenceValue = commandQueue->ExecuteCommandLists(std::size(commandLists), commandLists);
+  context.SetFenceValue(commandQueue->ExecuteCommandLists(std::size(commandLists), commandLists));
 
   currentFrameIndex = framebuffer->Present(1, 0);
 }
@@ -566,26 +486,6 @@ void render()
 void finalize()
 {
   commandQueue.reset();
-
-  //framebuffer.swapChain.Reset();
-
-  //listMain.Reset();
-  //fence.Reset();
-  //rootSignature.Reset();
-  //pso.Reset();
-  //vertexBuffer.Reset();
-
-  //graphicsCommandQueue.Reset();
-  //descRTV.heap.Reset();
-  //descDSV.heap.Reset();
-  //framebuffer.depthStencil.Reset();
-  //for (int i = 0; i < framebufferCount; i++) {
-  //  commandAllocator[i].Reset();
-  //}
-  //for (int i = 0; i < framebufferCount; i++) {
-  //  framebuffer.renderTargets[i].Reset();
-  //}
-  //device.Reset();
 }
 
 // 画像を準備する
