@@ -2,21 +2,31 @@
 #include <math.h>
 #include <stdlib.h>
 
+// 現在の画面番号
+//   0 = タイトル
+//   1 = ゲーム
+//   2 = ゲームオーバー
 int scene_number = 0;
 
+// 自機の変数
 double player_x = 400;
 double player_y = 600;
 int player_anime = 0;
 double jump = 0;
 int score = 0;
 
+// 敵の変数
 double sabo_x = 0;
 double sabo_y = 600;
 int sabo_type = 0;
 
+// その他の変数
 double cloud_x = 0;
 double cloud_y = 300;
 
+//
+// タイトル画面
+//
 void title()
 {
   if (get_key(key_enter) == 1 || get_mouse_button_left() == mb_click) {
@@ -39,6 +49,9 @@ void title()
   draw_text(500, 600, "PRESS ENTER KEY");
 }
 
+//
+// ゲーム画面
+//
 void game()
 {
   if (get_key(key_space) == 1 || get_mouse_button_left() == mb_press_start) {
@@ -107,6 +120,9 @@ void game()
   }
 }
 
+//
+// ゲームオーバー画面
+//
 void gameover()
 {
   if (get_key(key_enter) == 1 || get_mouse_button_left() == mb_click) {
@@ -120,17 +136,23 @@ void gameover()
   draw_text(540, 440, "SCORE:%d", score);
 }
 
+//
+// ここからプログラムの実行が開始される
+//
 int main()
 {
+  // プログラムの初期化処理
   initialize("恐竜ラン", 1280, 720);
 
   play_bgm("bgm_stroll.mp3");
 
+  // ゲームループ
   for (;;) {
     if (update()) {
       break;
     }
 
+    // シーン番号に対応する関数を実行
     if (scene_number == 0) {
       title();
     } else if (scene_number == 1) {
@@ -142,6 +164,7 @@ int main()
     render();
   }
 
+  // プログラムの終了処理
   finalize();
 
   return 0;
