@@ -498,13 +498,10 @@ image_handle prepare_image(const char* image)
   } else {
     std::string s;
     s.reserve(1024);
-    s += "res/images/";
+    s += "res/‰æ‘œ/";
     s += image;
+    const std::wstring ws = EasyLib::DX12::ToWString(s.c_str());
 
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), NULL, 0);
-    std::wstring ws( size_needed, 0 );
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), ws.data(), size_needed);
-    
     tex = device->LoadTexture(ws.c_str());
     if (!tex) {
       auto itrMiss = textureMissCache.find(image);
