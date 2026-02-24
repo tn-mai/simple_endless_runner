@@ -117,6 +117,7 @@ void gameover()
 
   draw_image(640, 360, "bg.jpg");
   draw_text(540, 360, "GAME OVER");
+  draw_text(540, 440, "SCORE:%d", score);
 }
 
 int main()
