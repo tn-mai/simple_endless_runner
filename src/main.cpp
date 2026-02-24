@@ -21,7 +21,7 @@ void title()
 {
   if (get_key(key_enter) == 1 || get_mouse_button_left() == mb_click) {
     play_sound("ok.wav");
-    //play_bgm("bgm_main.mp3");
+    play_bgm("bgm_prehistoric.mp3");
     player_x = 400;
     player_y = 600;
     player_anime = 0;
@@ -111,6 +111,7 @@ void gameover()
 {
   if (get_key(key_enter) == 1 || get_mouse_button_left() == mb_click) {
     play_sound("ok.wav");
+    play_bgm("bgm_stroll.mp3");
     scene_number = 0;
   }
 
@@ -121,6 +122,8 @@ void gameover()
 int main()
 {
   initialize("‹°—³ƒ‰ƒ“", 1280, 720);
+
+  play_bgm("bgm_stroll.mp3");
 
   for (;;) {
     if (update()) {
