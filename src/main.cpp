@@ -43,8 +43,11 @@ void title()
     scene_number = 1;
   }
 
-  draw_image(640, 360, "bg.jpg");
-  draw_image(640, 360, "logo_title_jp.png");
+  draw_image(640, 360, "bg_yellow.png");
+
+  static double dy = 0;
+  draw_image(640, 350 + sin(dy) * 20, "logo_title_jp.png");
+  dy += 0.025;
 
   draw_text(500, 600, "PRESS ENTER KEY");
 }
@@ -79,12 +82,13 @@ void game()
   if (sqrt(dx * dx + dy * dy) < 64) {
     play_sound("miss.wav");
     stop_bgm();
+    play_sound("bgm_gameover.mp3");
     scene_number = 2;
   }
 
   score += 1;
 
-  draw_image(640, 360, "bg.jpg");
+  draw_image(640, 360, "bg_blue.png");
 
   draw_image(cloud_x, cloud_y, "cloud.png", 2, 0);
   cloud_x -= 1;
@@ -131,7 +135,7 @@ void gameover()
     scene_number = 0;
   }
 
-  draw_image(640, 360, "bg.jpg");
+  draw_image(640, 360, "bg_violet.png");
   draw_text(540, 360, "GAME OVER");
   draw_text(540, 440, "SCORE:%d", score);
 }
